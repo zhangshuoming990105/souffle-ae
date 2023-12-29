@@ -1,6 +1,6 @@
 set -xe
 cd /workspace/baseline/xla/xla_models
-
+SOUFFLE_RUN=$1
 # export TF_XLA_FLAGS="--tf_xla_enable_xla_devices --tf_xla_auto_jit=2 --tf_xla_cpu_global_jit"
 # export XLA_FLAGS="--xla_hlo_profile --xla_dump_hlo_as_text --xla_dump_hlo_as_dot --xla_dump_hlo_as_html --xla_dump_hlo_as_proto"
 export TF_DUMP_GRAPH_PREFIX="/tmp/tf_dump_graph/"
@@ -8,69 +8,92 @@ export TF_XLA_FLAGS="--tf_xla_enable_xla_devices --tf_xla_auto_jit=2 --tf_xla_cp
 # export XLA_FLAGS="--xla_hlo_profile  --xla_dump_hlo_as_text --xla_dump_hlo_as_dot --xla_dump_hlo_as_html --xla_dump_hlo_as_proto"
 # export TF_CPP_MIN_VLOG_LEVEL=2
 
-select_latency='SELECT names.value AS name, end - start FROM CUPTI_ACTIVITY_KIND_KERNEL AS k JOIN StringIds AS names ON k.demangledName = names.id;'
+#  --target-processes all
+NCU_ARGS="--metrics dram__bytes_read,gpu__time_duration --clock-control none"
 
 # BERT
+NAME=xla_bert
 if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
-nsys profile --stats=true -o xla-bert-nsys -f true \
+ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python3 tf2load_pb.py --model_file bert-lyj.pb \
   --inputs lyj-input:1,384,768 --outputs layer_0/output/LayerNorm/batchnorm/add_1 --dtype float16 > bert.xla.log 2>&1
 sqlite3 --csv xla-bert-nsys.sqlite "${select_latency}" > xla-bert-nsys.xla.csv
 fi
-XLA_BERT_LATENCY=$(python3 extract_nsys_cuda_kernel_latency.py xla-bert-nsys.xla.csv)
+ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw | grep -v "redzone_checker" | grep -v "void convolve_common_engine_float_NHWC" > ncu-${NAME}.csv
+XLA_BERT_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
+XLA_BERT_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 bert_layer=12
-XLA_BERT_LATENCY=$(python3 -c "print(${XLA_BERT_LATENCY} * ${bert_layer})")
+XLA_BERT_MEM=$(python3 -c "print(${XLA_BERT_MEM} * ${bert_layer})")
+XLA_BERT_NUM_KERNELS=$(python3 -c "print(${XLA_BERT_NUM_KERNELS} * ${bert_layer})")
 
 # ResNext
+NAME=xla_resnext
 if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
-nsys profile --stats=true -o resnext_imagenet_101-nsys -f true \
+ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python tf2load_pb.py --model_file resnext_imagenet_101.pb \
   --inputs input:1,3,224,224 --outputs Flatten/flatten/Reshape --dtype float32 > resnext_imagenet_101.xla.log  2>&1
-sqlite3 --csv resnext_imagenet_101-nsys.sqlite "${select_latency}" | grep -v -e "redzone_checker" > resnext_imagenet_101-nsys.xla.csv
 fi
-XLA_RESNEXT_LATENCY=$(python3 extract_nsys_cuda_kernel_latency.py resnext_imagenet_101-nsys.xla.csv)
+ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw \
+  | grep -v "redzone_checker" \
+  | grep -v "void convolve_common_engine_float_NHWC"\
+  | grep -v "void cudnn::ops::nchwToNhwcKernel" \
+  | grep -v "__xla_fp32_comparison"\
+  | grep -v "void cudnn::ops::nhwcToNchwKernel" > ncu-${NAME}.csv
+XLA_RESNEXT_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
+XLA_RESNEXT_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 
 # LSTM
+NAME=xla_lstm
 if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
-nsys profile --stats=true -o tf_lstm-nsys -f true \
+ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python tf_lstm.py > tf_lstm.xla.log  2>&1
-sqlite3 --csv tf_lstm-nsys.sqlite "${select_latency}" | grep -v -e "redzone_checker" > tf_lstm-nsys.xla.csv
 fi
-XLA_LSTM_LATENCY=$(python3 extract_nsys_cuda_kernel_latency.py tf_lstm-nsys.xla.csv)
+ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw | grep -v "redzone_checker" | grep -v "void convolve_common_engine_float_NHWC" > ncu-${NAME}.csv
+XLA_LSTM_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
+XLA_LSTM_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 
 # EfficientNet
+NAME=xla_efficientnet
 if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
-nsys profile --stats=true -o efficientnet-b0-nsys -f true \
+ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python tf2load_pb.py --model_file efficientnet-b0.pb \
   --inputs input_tensor:1,224,224,3 --outputs efficientnet-b0/model/head/dense/BiasAdd --dtype float32 > efficientnet-b0.xla.log  2>&1
-sqlite3 --csv efficientnet-b0-nsys.sqlite "${select_latency}" | grep -v -e "redzone_checker"  > efficientnet-b0-nsys.xla.csv
 fi
-XLA_EFFICIENT_LATENCY=$(python3 extract_nsys_cuda_kernel_latency.py efficientnet-b0-nsys.xla.csv)
+ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw \
+  | grep -v "redzone_checker" \
+  | grep -v "void convolve_common_engine_float_NHWC"\
+  | grep -v "__xla_fp32_comparison"\
+  | grep -v "void cudnn::ops::nhwcToNchwKernel" \
+  | grep -v "void cudnn::ops::nchwToNhwcKernel" > ncu-${NAME}.csv
+XLA_EFFICIENTNET_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
+XLA_EFFICIENTNET_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 
 # SwinTrans.
+NAME=xla_swin_trans
 cd Swin-Transformer-Tensorflow
 if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
-# ncu --clock-control none -o swin-trans-ncu -f \
-#     python main.py --cfg configs/swin_base_patch4_window7_224.yaml --include_top 1 --resume 1 --weights_type imagenet_1k > swin-trans.xla.log  2>&1
-# ncu -i swin-trans-ncu.ncu-rep --csv --page raw | grep -v -e "redzone_checker" > swin-trans-ncu-raw.xla.csv
-nsys profile --stats=true -o swin-trans-nsys -f true \
+ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python main.py --cfg configs/swin_base_patch4_window7_224.yaml --include_top 1 --resume 1 --weights_type imagenet_1k | grep -v -e "redzone_checker" > swin-trans.xla.log  2>&1
-sqlite3 --csv swin-trans-nsys.sqlite "${select_latency}" > swin-trans-nsys.xla.csv
 fi
-python3 ../extract_nsys_cuda_kernel_latency.py swin-trans-nsys.xla.csv
-XLA_SWIN_TRANS_LATENCY=$(python3 ../../../extract_ncu_cuda_kernel_latency.py swin-trans-ncu-raw.xla.csv)
+ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw > ncu-${NAME}.csv
+XLA_SWIN_TRANS_MEM=$(python3 ../../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
+XLA_SWIN_TRANS_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 cd ..
 
 # MMOE
+NAME=xla_mmoe
 if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
-nsys profile --stats=true -o tf_mmoe-nsys -f true \
+ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python3 tf_mmoe.py > tf_mmoe.xla.log  2>&1
-sqlite3 --csv tf_mmoe-nsys.sqlite "${select_latency}" | grep -v -e "redzone_checker" > tf_mmoe-nsys.xla.csv
 fi
-XLA_MMoE_LATENCY=$(python3 extract_nsys_cuda_kernel_latency.py tf_mmoe-nsys.xla.csv)
+ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw | grep -v "redzone_checker" | grep -v "void convolve_common_engine_float_NHWC" > ncu-${NAME}.csv
+XLA_MMOE_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
+XLA_MMOE_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 
-# echo "XLA: ," ${XLA_BERT_LATENCY}, ${XLA_RESNEXT_LATENCY}, \
-#   ${XLA_LSTM_LATENCY}, ${XLA_EFFICIENT_LATENCY}, \
-#   ${XLA_SWIN_TRANS_LATENCY}, ${XLA_MMoE_LATENCY} | tee table3_xla.csv
 
-python3 -c "print('XLA:, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}'.format(${XLA_BERT_LATENCY}, ${XLA_RESNEXT_LATENCY}, ${XLA_LSTM_LATENCY}, ${XLA_EFFICIENT_LATENCY}, ${XLA_SWIN_TRANS_LATENCY}, ${XLA_MMoE_LATENCY}))"  | tee table3_xla.csv
+echo "XLA number of kernels:", ${XLA_BERT_NUM_KERNELS}, ${XLA_RESNEXT_NUM_KERNELS}, \
+  ${XLA_LSTM_NUM_KERNELS}, ${XLA_EFFICIENTNET_NUM_KERNELS}, \
+  ${XLA_SWIN_TRANS_NUM_KERNELS}, ${XLA_MMOE_NUM_KERNELS} > table5_xla.csv
+echo "XLA: ", ${XLA_BERT_MEM}, ${XLA_RESNEXT_MEM}, \
+  ${XLA_LSTM_MEM}, ${XLA_EFFICIENTNET_MEM}, \
+  ${XLA_SWIN_TRANS_MEM}, ${XLA_MMOE_MEM} >> table5_xla_mem.csv

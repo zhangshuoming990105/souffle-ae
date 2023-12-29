@@ -180,3 +180,36 @@ If there are any questions or suggestion, please feel free to drop me an email (
 -----
 
 #### Many thanks for your review, time and efforts on this artifact evaluation.  <br> Many thanks for your understanding and bearing with some inconveniences on this notebook. 
+
+
+
+# FIX: 2023-12-29, probably will occured bug in usage 
+
+1. TensorRT/docker/ubuntu-18.04.Dockerfile, previous missing dependency of ncu and nsys
+you need to manually install them by running the following command in the docker container:
+```dockerfile
+RUN  echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64 /" > /etc/apt/sources.list.d/cuda.list && \
+     wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub | apt-key add - && \
+         apt-get update -y && \
+     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+         nsight-compute-2022.4.1 cuda-nsight-systems-11-7 && \
+     rm -rf /var/lib/apt/lists/* 
+ENV PATH=/opt/nvidia/nsight-compute/2022.4.1/:${PATH}
+```
+
+2. iree, swin-transformer, we need to compile the latest vmbf files
+```bash
+docker exec -it {souffle-iree:latest container id} /bin/bash -c "/bin/bash /workspace/iree_models/compile2vmbf.sh"
+```
+
+3. OS gpu permission, we need the profiler to have access to the GPU performance counter.
+if ERR_NVGPUCTRPERM error occured and causing the memory read not measured, we need to do the following on the host machine:
+```bash
+cd /etc/modprobe.d
+sudo echo "options nvidia NVreg_RestrictProfilingToAdminUsers=0" >> nvidia_permission_profile.conf
+
+sudo update-initramfs -u -k all
+
+sudo reboot
+
+```

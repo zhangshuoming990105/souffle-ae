@@ -13,12 +13,13 @@ NCU_ARGS="--metrics dram__bytes_read,gpu__time_duration --clock-control none"
 
 # BERT
 NAME=xla_bert
-if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
+echo "SOUFFLE_RUN is TRUE"
+# if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
 ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python3 tf2load_pb.py --model_file bert-lyj.pb \
-  --inputs lyj-input:1,384,768 --outputs layer_0/output/LayerNorm/batchnorm/add_1 --dtype float16 > bert.xla.log 2>&1
+  --inputs lyj-input:1,384,768 --outputs layer_0/output/LayerNorm/batchnorm/add_1 --dtype float16 > bert.xla.log
 sqlite3 --csv xla-bert-nsys.sqlite "${select_latency}" > xla-bert-nsys.xla.csv
-fi
+# fi
 ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw | grep -v "redzone_checker" | grep -v "void convolve_common_engine_float_NHWC" > ncu-${NAME}.csv
 XLA_BERT_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
 XLA_BERT_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
@@ -28,11 +29,11 @@ XLA_BERT_NUM_KERNELS=$(python3 -c "print(${XLA_BERT_NUM_KERNELS} * ${bert_layer}
 
 # ResNext
 NAME=xla_resnext
-if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
+# if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
 ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python tf2load_pb.py --model_file resnext_imagenet_101.pb \
-  --inputs input:1,3,224,224 --outputs Flatten/flatten/Reshape --dtype float32 > resnext_imagenet_101.xla.log  2>&1
-fi
+  --inputs input:1,3,224,224 --outputs Flatten/flatten/Reshape --dtype float32 > resnext_imagenet_101.xla.log
+# fi
 ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw \
   | grep -v "redzone_checker" \
   | grep -v "void convolve_common_engine_float_NHWC"\
@@ -44,21 +45,21 @@ XLA_RESNEXT_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 
 # LSTM
 NAME=xla_lstm
-if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
+# if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
 ncu ${NCU_ARGS} -o ncu-${NAME} -f \
-  python tf_lstm.py > tf_lstm.xla.log  2>&1
-fi
+  python tf_lstm.py > tf_lstm.xla.log
+# fi
 ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw | grep -v "redzone_checker" | grep -v "void convolve_common_engine_float_NHWC" > ncu-${NAME}.csv
 XLA_LSTM_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
 XLA_LSTM_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 
 # EfficientNet
 NAME=xla_efficientnet
-if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
+# if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
 ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python tf2load_pb.py --model_file efficientnet-b0.pb \
   --inputs input_tensor:1,224,224,3 --outputs efficientnet-b0/model/head/dense/BiasAdd --dtype float32 > efficientnet-b0.xla.log  2>&1
-fi
+# fi
 ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw \
   | grep -v "redzone_checker" \
   | grep -v "void convolve_common_engine_float_NHWC"\
@@ -71,10 +72,10 @@ XLA_EFFICIENTNET_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 # SwinTrans.
 NAME=xla_swin_trans
 cd Swin-Transformer-Tensorflow
-if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
+# if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
 ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python main.py --cfg configs/swin_base_patch4_window7_224.yaml --include_top 1 --resume 1 --weights_type imagenet_1k | grep -v -e "redzone_checker" > swin-trans.xla.log  2>&1
-fi
+# fi
 ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw > ncu-${NAME}.csv
 XLA_SWIN_TRANS_MEM=$(python3 ../../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
 XLA_SWIN_TRANS_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
@@ -82,10 +83,10 @@ cd ..
 
 # MMOE
 NAME=xla_mmoe
-if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
+# if [ -n "${SOUFFLE_RUN}" ] && [ "${SOUFFLE_RUN}" = "TRUE" ]; then
 ncu ${NCU_ARGS} -o ncu-${NAME} -f \
   python3 tf_mmoe.py > tf_mmoe.xla.log  2>&1
-fi
+# fi
 ncu -i ./ncu-${NAME}.ncu-rep --csv --page raw | grep -v "redzone_checker" | grep -v "void convolve_common_engine_float_NHWC" > ncu-${NAME}.csv
 XLA_MMOE_MEM=$(python3 ../../extract_ncu_cuda_mem_read.py ncu-${NAME}.csv)
 XLA_MMOE_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
@@ -94,6 +95,6 @@ XLA_MMOE_NUM_KERNELS=$(wc -l ncu-${NAME}.csv | awk '{ print $1 }')
 echo "XLA number of kernels:", ${XLA_BERT_NUM_KERNELS}, ${XLA_RESNEXT_NUM_KERNELS}, \
   ${XLA_LSTM_NUM_KERNELS}, ${XLA_EFFICIENTNET_NUM_KERNELS}, \
   ${XLA_SWIN_TRANS_NUM_KERNELS}, ${XLA_MMOE_NUM_KERNELS} > table5_xla.csv
-# echo "XLA: ", ${XLA_BERT_MEM}, ${XLA_RESNEXT_MEM}, \
-#   ${XLA_LSTM_MEM}, ${XLA_EFFICIENTNET_MEM}, \
-#   ${XLA_SWIN_TRANS_MEM}, ${XLA_MMOE_MEM} >> table5_xla_mem.csv
+echo "XLA: ", ${XLA_BERT_MEM}, ${XLA_RESNEXT_MEM}, \
+  ${XLA_LSTM_MEM}, ${XLA_EFFICIENTNET_MEM}, \
+  ${XLA_SWIN_TRANS_MEM}, ${XLA_MMOE_MEM} >> table5_xla_mem.csv

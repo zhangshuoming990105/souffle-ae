@@ -33,7 +33,11 @@ docker exec -it ${trt_container_id} \
 
 # Rammer Pass
 bash ${script_directory}/../baseline/rammer/run_docker_rammer.sh
-cat ${script_directory}/../baseline/rammer/rammer_generated_models/table3_rammer.csv >> ${script_directory}/../results/table3.csv
+rammer_container_id=$(docker ps -qf "ancestor=sunqianqi/sirius:mlsys_ae")
+docker exec -it ${rammer_container_id} /bin/bash  -c "bash /root/rammer_generated_models/run_rammer.sh"
+docker exec -it ${rammer_container_id} \
+  /bin/bash -c "cat /root/rammer_generated_models/table3_rammer.csv" >> ${script_directory}/../results/table3.csv
+# cat ${script_directory}/../baseline/rammer/rammer_generated_models/table3_rammer.csv >> ${script_directory}/../results/table3.csv
 
 
 # Apollo Pass
@@ -42,9 +46,9 @@ docker exec -it ${souffle_container_id} \
   /bin/bash -c "cat /workspace/baseline/mindspore/table3_apollo.csv" >> ${script_directory}/../results/table3.csv
 
 # IREE Pass
-if [ ! "$(docker ps -qf "ancestor=souffle-iree:latest")" ]; then
+# if [ ! "$(docker ps -qf "ancestor=souffle-iree:latest")" ]; then
   bash ../baseline/iree/run_docker_iree.sh run
-fi
+# fi
 iree_container_id=$(docker ps -qf "ancestor=souffle-iree:latest")
 docker exec -it -e SOUFFLE_RUN=${SOUFFLE_RUN} ${iree_container_id} /bin/bash /workspace/iree_models/run_nsys_iree.sh
 docker exec -it ${iree_container_id} \
